@@ -22,12 +22,12 @@ export interface AuthContextType {
 
 export interface Student {
   id: number;
+  nisn: string; // 10-digit unique identifier
   name: string;
   class: string;
   parentName: string;
   phone: string;
   email: string;
-  sppAmount: number;
   status: "Lunas" | "Belum Bayar" | "Tunggakan";
   lastPayment: string;
   totalDebt: number;
@@ -37,8 +37,11 @@ export interface Payment {
   id: number;
   studentId: number;
   studentName: string;
+  studentNisn: string;
   amount: number;
   date: string;
-  method: string;
+  method: "Transfer Bank" | "Cash" | "E-Wallet" | "Kartu Kredit";
   status: "Confirmed" | "Pending";
+  description?: string;
+  period: string; // e.g., "November 2024"
 }

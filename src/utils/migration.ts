@@ -32,6 +32,7 @@ export class DatabaseMigration {
       await Database.query(`
         CREATE TABLE IF NOT EXISTS students (
           id SERIAL PRIMARY KEY,
+          nisn VARCHAR(10) UNIQUE NOT NULL,
           name VARCHAR(100) NOT NULL,
           class VARCHAR(20) NOT NULL,
           parent_name VARCHAR(100) NOT NULL,
@@ -39,7 +40,7 @@ export class DatabaseMigration {
           email VARCHAR(100),
           spp_amount INTEGER NOT NULL,
           status VARCHAR(20) NOT NULL CHECK (status IN ('Lunas', 'Tunggakan', 'Belum Bayar')),
-          last_payment DATE,
+          last_payment VARCHAR(20) DEFAULT '-',
           total_debt INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -127,22 +128,22 @@ export class DatabaseMigration {
         INSERT INTO users (username, email, password_hash, role, full_name, student_id) VALUES
         ('admin', 'admin@school.com', $1, 'admin', 'Administrator Sistem', NULL),
         ('tu_staff', 'tu@school.com', $2, 'staff', 'Staff Tata Usaha', NULL),
-        ('ahmad_fauzi', 'ahmad.fauzi@student.com', $3, 'siswa', 'Ahmad Fauzi', 1),
-        ('budi_santoso', 'budi.santoso@parent.com', $4, 'orangtua', 'Budi Santoso', 1),
-        ('siti_nurhaliza', 'siti.nurhaliza@student.com', $3, 'siswa', 'Siti Nurhaliza', 2),
-        ('ani_wijaya', 'ani.wijaya@parent.com', $4, 'orangtua', 'Ani Wijaya', 2)
+        ('1234567890', 'ahmad.fauzi@student.com', $3, 'siswa', 'Ahmad Fauzi', 1),
+        ('1234567890_parent', 'budi.santoso@parent.com', $4, 'orangtua', 'Budi Santoso', 1),
+        ('1234567891', 'siti.nurhaliza@student.com', $3, 'siswa', 'Siti Nurhaliza', 2),
+        ('1234567891_parent', 'ani.wijaya@parent.com', $4, 'orangtua', 'Ani Wijaya', 2)
       `,
         [adminPassword, staffPassword, studentPassword, parentPassword]
       );
 
       // Insert students
       await Database.query(`
-        INSERT INTO students (name, class, parent_name, phone, email, spp_amount, status, last_payment, total_debt) VALUES
-        ('Ahmad Fauzi', 'X-A', 'Budi Santoso', '6281234567890', 'budi@email.com', 500000, 'Lunas', '2025-01-15', 0),
-        ('Siti Nurhaliza', 'XI-B', 'Ani Wijaya', '6281234567891', 'ani@email.com', 500000, 'Tunggakan', '2024-11-15', 1000000),
-        ('Rahman Hidayat', 'XII-A', 'Dedi Rahman', '6281234567892', 'dedi@email.com', 450000, 'Belum Bayar', '2024-12-15', 450000),
-        ('Maya Sari', 'X-B', 'Indra Sari', '6281234567893', 'indra@email.com', 500000, 'Lunas', '2025-01-20', 0),
-        ('Rizki Pratama', 'XI-A', 'Slamet Pratama', '6281234567894', 'slamet@email.com', 500000, 'Tunggakan', '2024-10-15', 1500000)
+        INSERT INTO students (nisn, name, class, parent_name, phone, email, spp_amount, status, last_payment, total_debt) VALUES
+        ('1234567890', 'Ahmad Fauzi', 'X-A', 'Budi Santoso', '6281234567890', 'budi@email.com', 500000, 'Lunas', '2025-01-15', 0),
+        ('1234567891', 'Siti Nurhaliza', 'XI-B', 'Ani Wijaya', '6281234567891', 'ani@email.com', 500000, 'Tunggakan', '2024-11-15', 1000000),
+        ('1234567892', 'Rahman Hidayat', 'XII-A', 'Dedi Rahman', '6281234567892', 'dedi@email.com', 450000, 'Belum Bayar', '2024-12-15', 450000),
+        ('1234567893', 'Maya Sari', 'X-B', 'Indra Sari', '6281234567893', 'indra@email.com', 500000, 'Lunas', '2025-01-20', 0),
+        ('1234567894', 'Rizki Pratama', 'XI-A', 'Slamet Pratama', '6281234567894', 'slamet@email.com', 500000, 'Tunggakan', '2024-10-15', 1500000)
       `);
 
       // Insert payments

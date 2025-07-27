@@ -8,6 +8,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { Student } from "../../types";
+import { apiService } from "../../services/apiService";
 
 interface StudentManagementProps {
   students: Student[];
@@ -23,6 +24,8 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
   const [filterStatus, setFilterStatus] = useState("");
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleAddStudent = () => {
     setIsAddingStudent(true);
@@ -32,10 +35,35 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
     setEditingStudent(student);
   };
 
-  const handleDeleteStudent = (studentId: number) => {
-    if (window.confirm("Apakah Anda yakin ingin menghapus data siswa ini?")) {
-      onStudentsChange(students.filter((s) => s.id !== studentId));
+  const handleDeleteStudent = (student: Student) => {
+    setDeletingStudent(student);
+  };
+
+  const confirmDeleteStudent = async () => {
+    if (!deletingStudent) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await apiService.deleteStudent?.(deletingStudent.id);
+      if (response?.success) {
+        onStudentsChange(students.filter((s) => s.id !== deletingStudent.id));
+        setDeletingStudent(null);
+      } else {
+        alert(
+          "Gagal menghapus data siswa: " +
+            (response?.message || "Unknown error")
+        );
+      }
+    } catch (error) {
+      console.error("Error deleting student:", error);
+      alert("Terjadi kesalahan saat menghapus data siswa");
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const cancelDeleteStudent = () => {
+    setDeletingStudent(null);
   };
 
   // Filter students
@@ -54,51 +82,115 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
     onSave: () => void;
     onCancel: () => void;
   }> = ({ student, onSave, onCancel }) => {
-    const [formData, setFormData] = useState<Partial<Student>>(
+    const [formData, setFormData] = useState<
+      Partial<Student & { password: string; confirmPassword: string }>
+    >(
       student || {
+        nisn: "",
         name: "",
         class: "",
         parentName: "",
         phone: "",
         email: "",
-        sppAmount: 0,
         status: "Belum Bayar",
         totalDebt: 0,
+        password: "",
+        confirmPassword: "",
       }
     );
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
       // Validate required fields
       if (
+        !formData.nisn ||
         !formData.name ||
         !formData.class ||
         !formData.parentName ||
-        !formData.phone ||
-        !formData.sppAmount
+        !formData.phone
       ) {
         alert("Mohon lengkapi semua field yang wajib diisi");
         return;
       }
 
-      if (student) {
-        onStudentsChange(
-          students.map((s) =>
-            s.id === student.id
-              ? { ...(formData as Student), id: student.id }
-              : s
-          )
-        );
-      } else {
-        onStudentsChange([
-          ...students,
-          {
-            ...(formData as Student),
-            id: Date.now(),
-            lastPayment: "-",
-          },
-        ]);
+      // Validate NISN format (10 digits)
+      if (!/^\d{10}$/.test(formData.nisn || "")) {
+        alert("NISN harus berupa 10 digit angka");
+        return;
       }
-      onSave();
+
+      // Check for duplicate NISN (except when editing current student)
+      const duplicateNISN = students.find(
+        (s) => s.nisn === formData.nisn && s.id !== student?.id
+      );
+      if (duplicateNISN) {
+        alert("NISN sudah terdaftar untuk siswa lain");
+        return;
+      }
+
+      // For new students, validate password fields
+      if (!student) {
+        if (!formData.password || !formData.confirmPassword) {
+          alert(
+            "Password dan konfirmasi password harus diisi untuk siswa baru"
+          );
+          return;
+        }
+        if (formData.password !== formData.confirmPassword) {
+          alert("Password dan konfirmasi password tidak sama");
+          return;
+        }
+        if (formData.password.length < 6) {
+          alert("Password minimal 6 karakter");
+          return;
+        }
+      }
+
+      setIsSubmitting(true);
+      try {
+        if (student) {
+          // Update existing student
+          const response = await apiService.updateStudent?.({
+            ...formData,
+            id: student.id,
+          });
+          if (response?.success) {
+            onStudentsChange(
+              students.map((s) =>
+                s.id === student.id
+                  ? { ...(formData as Student), id: student.id }
+                  : s
+              )
+            );
+            onSave();
+          } else {
+            alert(
+              "Gagal memperbarui data siswa: " +
+                (response?.message || "Unknown error")
+            );
+          }
+        } else {
+          // Create new student with accounts
+          const response = await apiService.createStudentWithAccounts?.(
+            formData
+          );
+          if (response?.success) {
+            const newStudent = response.data;
+            onStudentsChange([...students, newStudent]);
+            onSave();
+          } else {
+            alert(
+              "Gagal membuat siswa baru: " +
+                (response?.message || "Unknown error")
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Error saving student:", error);
+        alert("Terjadi kesalahan saat menyimpan data siswa");
+      } finally {
+        setIsSubmitting(false);
+      }
     };
 
     const handleChange = (
@@ -107,22 +199,15 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
       const { name, value } = e.target;
       let processedValue: string | number = value;
 
-      if (name === "sppAmount") {
-        // Remove any non-digit characters and convert to number
-        const numericValue = value.replace(/[^0-9]/g, "");
-        processedValue = numericValue === "" ? 0 : parseInt(numericValue) || 0;
+      if (name === "nisn") {
+        // Only allow numeric input for NISN
+        processedValue = value.replace(/[^0-9]/g, "");
       }
 
       setFormData({
         ...formData,
         [name]: processedValue,
       });
-    };
-
-    const formatCurrency = (value: number | string): string => {
-      if (!value || value === 0) return "";
-      const numValue = typeof value === "string" ? parseInt(value) || 0 : value;
-      return new Intl.NumberFormat("id-ID").format(numValue);
     };
 
     return (
@@ -149,6 +234,29 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="nisn"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                NISN <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="nisn"
+                name="nisn"
+                placeholder="Masukkan 10 digit NISN"
+                value={formData.nisn || ""}
+                onChange={handleChange}
+                maxLength={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Contoh: 1234567890 (10 digit)
+              </p>
             </div>
 
             <div>
@@ -232,43 +340,93 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
               />
             </div>
 
-            <div>
-              <label
-                htmlFor="sppAmount"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Jumlah SPP (IDR) <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-2 text-gray-500 text-sm">
-                  Rp
-                </span>
-                <input
-                  type="text"
-                  id="sppAmount"
-                  name="sppAmount"
-                  placeholder="0"
-                  value={formatCurrency(formData.sppAmount || 0)}
-                  onChange={handleChange}
-                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">Contoh: 500,000</p>
-            </div>
+            {/* Password fields - only for new students */}
+            {!student && (
+              <>
+                <div className="border-t pt-4 mt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">
+                    Informasi Akun (Untuk Siswa & Orang Tua)
+                  </h4>
+                </div>
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Masukkan password untuk akun siswa dan orang tua"
+                    value={formData.password || ""}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Minimal 6 karakter
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="confirmPassword"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Konfirmasi Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    placeholder="Ulangi password"
+                    value={formData.confirmPassword || ""}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-700">
+                    <strong>Catatan:</strong> Sistem akan membuat 3 akun secara
+                    otomatis:
+                    <br />• Akun siswa dengan username: NISN (contoh:
+                    1234567890)
+                    <br />• Akun siswa dengan username: nama_siswa (contoh:
+                    budi_santoso)
+                    <br />• Akun orang tua dengan username: NISN_parent
+                    <br />
+                    Siswa dapat login dengan NISN atau nama (huruf kecil), semua
+                    akun menggunakan password yang sama.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
           <div className="flex justify-end space-x-3 mt-6">
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Batal
             </button>
             <button
               onClick={handleSubmit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
             >
-              Simpan
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan</span>
+              )}
             </button>
           </div>
         </div>
@@ -349,9 +507,6 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                 Orang Tua
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                SPP
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -371,7 +526,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                       {student.name}
                     </div>
                     <div className="text-sm text-gray-500">
-                      ID: {student.id}
+                      NISN: {student.nisn}
                     </div>
                   </div>
                 </td>
@@ -385,9 +540,6 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                     </div>
                     <div className="text-sm text-gray-500">{student.phone}</div>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  Rp {student.sppAmount.toLocaleString("id-ID")}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
@@ -411,16 +563,21 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleEditStudent(student)}
-                      className="text-blue-600 hover:text-blue-900"
+                      className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50 transition-colors"
+                      title="Edit data siswa"
                     >
                       <Edit className="h-4 w-4" />
                     </button>
-                    <button className="text-green-600 hover:text-green-900">
+                    <button
+                      className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50 transition-colors"
+                      title="Kirim pesan WhatsApp"
+                    >
                       <MessageCircle className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleDeleteStudent(student.id)}
-                      className="text-red-600 hover:text-red-900"
+                      onClick={() => handleDeleteStudent(student)}
+                      className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 transition-colors"
+                      title="Hapus data siswa"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -445,6 +602,89 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
           onSave={() => setEditingStudent(null)}
           onCancel={() => setEditingStudent(null)}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Konfirmasi Hapus Data
+            </h3>
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                Apakah Anda yakin ingin menghapus data siswa berikut?
+              </p>
+              <div className="bg-gray-50 p-4 rounded-lg border">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-600">Nama:</span>
+                    <span className="text-gray-900">
+                      {deletingStudent.name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-600">NISN:</span>
+                    <span className="text-gray-900">
+                      {deletingStudent.nisn}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-600">Kelas:</span>
+                    <span className="text-gray-900">
+                      {deletingStudent.class}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700">
+                  <strong>Peringatan:</strong> Tindakan ini akan menghapus:
+                </p>
+                <ul className="text-sm text-red-600 mt-2 space-y-1">
+                  <li>• Data siswa secara permanen</li>
+                  <li>• Akun siswa (username: {deletingStudent.nisn})</li>
+                  <li>
+                    • Akun siswa (username:{" "}
+                    {deletingStudent.name
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]/g, "_")
+                      .replace(/_+/g, "_")
+                      .replace(/^_|_$/g, "")}
+                    )
+                  </li>
+                  <li>
+                    • Akun orang tua (username: {deletingStudent.nisn}_parent)
+                  </li>
+                  <li>• Data tidak dapat dikembalikan</li>
+                </ul>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={cancelDeleteStudent}
+                disabled={isDeleting}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmDeleteStudent}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Menghapus...</span>
+                  </>
+                ) : (
+                  <span>Hapus Data</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

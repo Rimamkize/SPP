@@ -9,7 +9,6 @@ export interface MenuPermission {
 export const MENU_PERMISSIONS: MenuPermission[] = [
   { id: "dashboard", roles: ["admin", "staff"] },
   { id: "students", roles: ["admin", "staff"] },
-  { id: "register", roles: ["admin"] }, // Only admin can register users
   { id: "payments", roles: ["admin", "staff", "siswa", "orangtua"] },
   { id: "reports", roles: ["admin", "staff"] },
   { id: "notifications", roles: ["admin", "staff"] },

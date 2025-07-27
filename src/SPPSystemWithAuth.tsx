@@ -6,7 +6,6 @@ import { Dashboard } from "./components/dashboard/Dashboard";
 import { StudentManagement } from "./components/students/StudentManagement";
 import { PaymentManagement } from "./components/payments/PaymentManagement";
 import { Reports } from "./components/reports/Reports";
-import { UserRegistration } from "./components/registration";
 import { NotificationManagement } from "./components/notifications/NotificationManagement";
 import { apiService } from "./services/apiService";
 import { hasMenuPermission, getAllowedMenus } from "./utils/accessControl";
@@ -24,27 +23,27 @@ const SPPDashboard: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       if (!isAuthenticated) return;
-      
+
       try {
         setLoading(true);
         setError(null);
-        
+
         // Load students and payments data
         const [studentsResult, paymentsResult] = await Promise.all([
           apiService.getStudents(),
-          apiService.getPayments()
+          apiService.getPayments(),
         ]);
 
         if (studentsResult.success) {
           setStudents(studentsResult.data);
         }
-        
+
         if (paymentsResult.success) {
           setPayments(paymentsResult.data);
         }
       } catch (err) {
-        console.error('Error loading data:', err);
-        setError('Failed to load data. Please try again.');
+        console.error("Error loading data:", err);
+        setError("Failed to load data. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -78,6 +77,38 @@ const SPPDashboard: React.FC = () => {
     }
   };
 
+  // Handle student data changes and refresh from API
+  const handleStudentsChange = async (updatedStudents: Student[]) => {
+    setStudents(updatedStudents);
+
+    // Optionally refresh data from API to ensure consistency
+    try {
+      const studentsResult = await apiService.getStudents();
+      if (studentsResult.success) {
+        setStudents(studentsResult.data);
+      }
+    } catch (err) {
+      console.warn("Failed to refresh students data:", err);
+      // Keep the local update if API call fails
+    }
+  };
+
+  // Handle payment data changes and refresh from API
+  const handlePaymentsChange = async (updatedPayments: Payment[]) => {
+    setPayments(updatedPayments);
+
+    // Optionally refresh data from API to ensure consistency
+    try {
+      const paymentsResult = await apiService.getPayments();
+      if (paymentsResult.success) {
+        setPayments(paymentsResult.data);
+      }
+    } catch (err) {
+      console.warn("Failed to refresh payments data:", err);
+      // Keep the local update if API call fails
+    }
+  };
+
   if (!isAuthenticated || !user) {
     return null; // This will be handled by AuthWrapper
   }
@@ -90,7 +121,9 @@ const SPPDashboard: React.FC = () => {
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Loading data...</p>
-            <p className="text-sm text-gray-500">Mode: {apiService.getCurrentMode()}</p>
+            <p className="text-sm text-gray-500">
+              Mode: {apiService.getCurrentMode()}
+            </p>
           </div>
         </div>
       );
@@ -102,10 +135,12 @@ const SPPDashboard: React.FC = () => {
         <div className="flex items-center justify-center min-h-64">
           <div className="text-center">
             <div className="text-red-600 text-6xl mb-4">⚠️</div>
-            <h3 className="text-lg font-medium text-red-800">Error Loading Data</h3>
+            <h3 className="text-lg font-medium text-red-800">
+              Error Loading Data
+            </h3>
             <p className="text-red-600 mb-4">{error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
+            <button
+              onClick={() => window.location.reload()}
               className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
             >
               Retry
@@ -132,13 +167,16 @@ const SPPDashboard: React.FC = () => {
         return (
           <StudentManagement
             students={students}
-            onStudentsChange={setStudents}
+            onStudentsChange={handleStudentsChange}
           />
         );
-      case "register":
-        return <UserRegistration />;
       case "payments":
-        return <PaymentManagement payments={payments} />;
+        return (
+          <PaymentManagement
+            payments={payments}
+            onPaymentsChange={handlePaymentsChange}
+          />
+        );
       case "reports":
         return <Reports students={students} payments={payments} />;
       case "notifications":

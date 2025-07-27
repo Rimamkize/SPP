@@ -6,7 +6,6 @@ import {
   DollarSign,
   FileText,
   MessageCircle,
-  UserPlus,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -32,7 +31,6 @@ export const Navigation: React.FC<NavigationProps> = ({
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
     { id: "students", label: "Data Siswa", icon: Users },
-    { id: "register", label: "Registrasi Pengguna", icon: UserPlus },
     { id: "payments", label: "Pembayaran", icon: DollarSign },
     { id: "reports", label: "Laporan", icon: FileText },
     { id: "notifications", label: "Notifikasi", icon: MessageCircle },

@@ -213,17 +213,29 @@ export class PostgreSQLAPI {
   static async getStudents(): Promise<any> {
     try {
       const query = `
-        SELECT id, name, class, parent_name, phone, email, spp_amount, 
+        SELECT id, nisn, name, class, parent_name, phone, email, spp_amount, 
                status, last_payment, total_debt, created_at
         FROM students 
-        ORDER BY name ASC
+        ORDER BY class, name
       `;
 
       const result = await Database.query(query);
 
       return {
         success: true,
-        data: result.rows,
+        data: result.rows.map((row: any) => ({
+          id: row.id,
+          nisn: row.nisn,
+          name: row.name,
+          class: row.class,
+          parentName: row.parent_name,
+          phone: row.phone,
+          email: row.email,
+          sppAmount: parseInt(row.spp_amount),
+          status: row.status,
+          lastPayment: row.last_payment,
+          totalDebt: parseInt(row.total_debt),
+        })),
       };
     } catch (error) {
       throw {
@@ -318,6 +330,253 @@ export class PostgreSQLAPI {
   // Test database connection
   static async testConnection(): Promise<boolean> {
     return await Database.testConnection();
+  }
+
+  // Student Management Methods
+  static async createStudentWithAccounts(studentData: any): Promise<any> {
+    const client = await Database.getClient();
+
+    try {
+      await client.query("BEGIN");
+
+      // Check if NISN already exists
+      const nisnCheck = await client.query(
+        "SELECT id FROM students WHERE nisn = $1",
+        [studentData.nisn]
+      );
+
+      if (nisnCheck.rows.length > 0) {
+        throw new Error("NISN sudah terdaftar");
+      }
+
+      // Generate lowercased username from name
+      const generateUsername = (name: string): string => {
+        return name
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "_") // Replace non-alphanumeric with underscore
+          .replace(/_+/g, "_") // Replace multiple underscores with single
+          .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
+      };
+
+      const nameBasedUsername = generateUsername(studentData.name);
+
+      // Check if name-based username already exists
+      const usernameCheck = await client.query(
+        "SELECT id FROM users WHERE username = $1",
+        [nameBasedUsername]
+      );
+
+      if (usernameCheck.rows.length > 0) {
+        throw new Error(
+          `Username ${nameBasedUsername} sudah digunakan. Silakan gunakan nama yang berbeda.`
+        );
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(studentData.password, 10);
+
+      // Insert student
+      const studentQuery = `
+        INSERT INTO students (nisn, name, class, parent_name, phone, email, spp_amount, status, last_payment, total_debt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING *
+      `;
+
+      const studentResult = await client.query(studentQuery, [
+        studentData.nisn,
+        studentData.name,
+        studentData.class,
+        studentData.parentName,
+        studentData.phone,
+        studentData.email,
+        studentData.sppAmount,
+        "Belum Bayar",
+        "-",
+        0,
+      ]);
+
+      const newStudent = studentResult.rows[0];
+
+      // Create student account with NISN as primary username
+      const studentAccountQuery = `
+        INSERT INTO users (username, email, password_hash, role, full_name, student_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `;
+
+      await client.query(studentAccountQuery, [
+        studentData.nisn, // Primary username = NISN
+        studentData.email,
+        hashedPassword,
+        "siswa",
+        studentData.name,
+        newStudent.id,
+      ]);
+
+      // Create secondary student account with name-based username
+      await client.query(studentAccountQuery, [
+        nameBasedUsername, // Secondary username = lowercased name
+        studentData.email,
+        hashedPassword,
+        "siswa",
+        studentData.name,
+        newStudent.id,
+      ]);
+
+      // Create parent account
+      const parentAccountQuery = `
+        INSERT INTO users (username, email, password_hash, role, full_name, student_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `;
+
+      await client.query(parentAccountQuery, [
+        studentData.nisn + "_parent", // Parent username = NISN_parent
+        studentData.email, // Could use parent email if provided separately
+        hashedPassword,
+        "orangtua",
+        studentData.parentName,
+        newStudent.id,
+      ]);
+
+      await client.query("COMMIT");
+
+      return {
+        success: true,
+        data: {
+          id: newStudent.id,
+          nisn: newStudent.nisn,
+          name: newStudent.name,
+          class: newStudent.class,
+          parentName: newStudent.parent_name,
+          phone: newStudent.phone,
+          email: newStudent.email,
+          sppAmount: parseInt(newStudent.spp_amount),
+          status: newStudent.status,
+          lastPayment: newStudent.last_payment,
+          totalDebt: parseInt(newStudent.total_debt),
+          studentUsernames: [studentData.nisn, nameBasedUsername], // Multiple login options
+          parentUsername: studentData.nisn + "_parent",
+        },
+        message: `Siswa dan akun berhasil dibuat. Login siswa dapat menggunakan: ${studentData.nisn} atau ${nameBasedUsername}`,
+      };
+    } catch (error: any) {
+      await client.query("ROLLBACK");
+      throw {
+        success: false,
+        message: error.message || "Gagal membuat siswa dan akun",
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  static async updateStudent(studentData: any): Promise<any> {
+    try {
+      const query = `
+        UPDATE students 
+        SET nisn = $2, name = $3, class = $4, parent_name = $5, 
+            phone = $6, email = $7, spp_amount = $8
+        WHERE id = $1
+        RETURNING *
+      `;
+
+      const result = await Database.query(query, [
+        studentData.id,
+        studentData.nisn,
+        studentData.name,
+        studentData.class,
+        studentData.parentName,
+        studentData.phone,
+        studentData.email,
+        studentData.sppAmount,
+      ]);
+
+      if (result.rows.length === 0) {
+        throw new Error("Siswa tidak ditemukan");
+      }
+
+      const updatedStudent = result.rows[0];
+
+      return {
+        success: true,
+        data: {
+          id: updatedStudent.id,
+          nisn: updatedStudent.nisn,
+          name: updatedStudent.name,
+          class: updatedStudent.class,
+          parentName: updatedStudent.parent_name,
+          phone: updatedStudent.phone,
+          email: updatedStudent.email,
+          sppAmount: parseInt(updatedStudent.spp_amount),
+          status: updatedStudent.status,
+          lastPayment: updatedStudent.last_payment,
+          totalDebt: parseInt(updatedStudent.total_debt),
+        },
+        message: "Data siswa berhasil diperbarui",
+      };
+    } catch (error: any) {
+      throw {
+        success: false,
+        message: error.message || "Gagal memperbarui data siswa",
+      };
+    }
+  }
+
+  static async deleteStudent(studentId: number): Promise<any> {
+    const client = await Database.getClient();
+
+    try {
+      await client.query("BEGIN");
+
+      // Get student data before deletion
+      const studentQuery = await client.query(
+        "SELECT * FROM students WHERE id = $1",
+        [studentId]
+      );
+
+      if (studentQuery.rows.length === 0) {
+        throw new Error("Siswa tidak ditemukan");
+      }
+
+      const studentData = studentQuery.rows[0];
+
+      // Delete related user accounts
+      await client.query("DELETE FROM users WHERE student_id = $1", [
+        studentId,
+      ]);
+
+      // Delete student
+      await client.query("DELETE FROM students WHERE id = $1", [studentId]);
+
+      await client.query("COMMIT");
+
+      return {
+        success: true,
+        data: {
+          id: studentData.id,
+          nisn: studentData.nisn,
+          name: studentData.name,
+          class: studentData.class,
+          parentName: studentData.parent_name,
+          phone: studentData.phone,
+          email: studentData.email,
+          sppAmount: parseInt(studentData.spp_amount),
+          status: studentData.status,
+          lastPayment: studentData.last_payment,
+          totalDebt: parseInt(studentData.total_debt),
+        },
+        message: "Siswa dan akun terkait berhasil dihapus",
+      };
+    } catch (error: any) {
+      await client.query("ROLLBACK");
+      throw {
+        success: false,
+        message: error.message || "Gagal menghapus siswa",
+      };
+    } finally {
+      client.release();
+    }
   }
 }
 
