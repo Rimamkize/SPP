@@ -1,6 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { BarChart3, PieChart, FileText, Download } from "lucide-react";
 import { Student, Payment } from "../../types";
+import {
+  generateMonthlyReportPDF,
+  generateOverdueReportPDF,
+} from "../../utils/pdfGenerator";
 
 interface ReportsProps {
   students: Student[];
@@ -8,6 +12,11 @@ interface ReportsProps {
 }
 
 export const Reports: React.FC<ReportsProps> = ({ students, payments }) => {
+  const [selectedClass, setSelectedClass] = useState("Semua Kelas");
+  const [selectedReportType, setSelectedReportType] =
+    useState("Rekap Pembayaran");
+  const [isGenerating, setIsGenerating] = useState(false);
+
   const totalStudents = students.length;
   const paidStudents = students.filter((s) => s.status === "Lunas").length;
   const overdueStudents = students.filter(
@@ -20,6 +29,78 @@ export const Reports: React.FC<ReportsProps> = ({ students, payments }) => {
     (sum, student) => sum + student.totalDebt,
     0
   );
+
+  const getFilteredData = () => {
+    const filteredStudents =
+      selectedClass === "Semua Kelas"
+        ? students
+        : students.filter((s) => s.class === selectedClass);
+
+    // Group by class
+    const classSummary = new Map();
+
+    filteredStudents.forEach((student) => {
+      if (!classSummary.has(student.class)) {
+        classSummary.set(student.class, {
+          total: 0,
+          paid: 0,
+          unpaid: 0,
+          overdue: 0,
+          revenue: 0,
+        });
+      }
+
+      const classData = classSummary.get(student.class);
+      classData.total++;
+
+      if (student.status === "Lunas") classData.paid++;
+      else if (student.status === "Belum Bayar") classData.unpaid++;
+      else if (student.status === "Tunggakan") classData.overdue++;
+
+      // Calculate revenue for this class
+      const studentPayments = payments.filter(
+        (p) => p.studentName === student.name && p.status === "Confirmed"
+      );
+      classData.revenue += studentPayments.reduce(
+        (sum, p) => sum + p.amount,
+        0
+      );
+    });
+
+    return Array.from(classSummary.entries()).map(([className, data]) => ({
+      class: className,
+      ...data,
+    }));
+  };
+
+  const filteredData = getFilteredData();
+
+  const handleGeneratePDF = async () => {
+    setIsGenerating(true);
+
+    try {
+      let filename = "";
+
+      if (selectedReportType === "Daftar Tunggakan") {
+        filename = generateOverdueReportPDF(students);
+      } else {
+        filename = generateMonthlyReportPDF({
+          students,
+          payments,
+          reportType: selectedReportType,
+          selectedClass,
+        });
+      }
+
+      // Log success message
+      console.log(`PDF berhasil dibuat: ${filename}`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      console.error("Terjadi kesalahan saat membuat PDF. Silakan coba lagi.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -92,29 +173,30 @@ export const Reports: React.FC<ReportsProps> = ({ students, payments }) => {
           <h3 className="text-lg font-semibold text-gray-800">
             Generate Laporan
           </h3>
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700">
+          <button
+            onClick={handleGeneratePDF}
+            disabled={isGenerating}
+            className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors ${
+              isGenerating
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+            } text-white`}
+          >
             <Download className="h-4 w-4" />
-            <span>Export PDF</span>
+            <span>{isGenerating ? "Membuat PDF..." : "Export PDF"}</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Periode
-            </label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-              <option>Januari 2025</option>
-              <option>Februari 2025</option>
-              <option>Maret 2025</option>
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Kelas
             </label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
               <option>Semua Kelas</option>
               <option>X-A</option>
               <option>X-B</option>
@@ -129,7 +211,11 @@ export const Reports: React.FC<ReportsProps> = ({ students, payments }) => {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Jenis Laporan
             </label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <select
+              value={selectedReportType}
+              onChange={(e) => setSelectedReportType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
               <option>Rekap Pembayaran</option>
               <option>Daftar Tunggakan</option>
               <option>Analisis Keuangan</option>
@@ -155,30 +241,24 @@ export const Reports: React.FC<ReportsProps> = ({ students, payments }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                <tr>
-                  <td className="px-4 py-2">X-A</td>
-                  <td className="px-4 py-2">2</td>
-                  <td className="px-4 py-2 text-green-600">1</td>
-                  <td className="px-4 py-2 text-yellow-600">0</td>
-                  <td className="px-4 py-2 text-red-600">1</td>
-                  <td className="px-4 py-2">Rp 500.000</td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-2">XI-B</td>
-                  <td className="px-4 py-2">1</td>
-                  <td className="px-4 py-2 text-green-600">0</td>
-                  <td className="px-4 py-2 text-yellow-600">0</td>
-                  <td className="px-4 py-2 text-red-600">1</td>
-                  <td className="px-4 py-2">Rp 500.000</td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-2">XII-A</td>
-                  <td className="px-4 py-2">1</td>
-                  <td className="px-4 py-2 text-green-600">0</td>
-                  <td className="px-4 py-2 text-yellow-600">1</td>
-                  <td className="px-4 py-2 text-red-600">0</td>
-                  <td className="px-4 py-2">Rp 0</td>
-                </tr>
+                {filteredData.map((classData) => (
+                  <tr key={classData.class}>
+                    <td className="px-4 py-2">{classData.class}</td>
+                    <td className="px-4 py-2">{classData.total}</td>
+                    <td className="px-4 py-2 text-green-600">
+                      {classData.paid}
+                    </td>
+                    <td className="px-4 py-2 text-yellow-600">
+                      {classData.unpaid}
+                    </td>
+                    <td className="px-4 py-2 text-red-600">
+                      {classData.overdue}
+                    </td>
+                    <td className="px-4 py-2">
+                      Rp {classData.revenue.toLocaleString("id-ID")}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
