@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginForm } from "./components/auth/LoginForm";
 import { Navigation } from "./components/navigation/Navigation";
@@ -7,6 +7,7 @@ import { StudentManagement } from "./components/students/StudentManagement";
 import { PaymentManagement } from "./components/payments/PaymentManagement";
 import { Reports } from "./components/reports/Reports";
 import { UserRegistration } from "./components/registration";
+import { NotificationManagement } from "./components/notifications/NotificationManagement";
 import { mockStudents, mockPayments } from "./data/mockData";
 import { hasMenuPermission, getAllowedMenus } from "./utils/accessControl";
 
@@ -72,11 +73,7 @@ const SPPDashboard: React.FC = () => {
       case "reports":
         return <Reports students={students} payments={mockPayments} />;
       case "notifications":
-        return (
-          <div className="text-center text-gray-500 mt-8">
-            Notifikasi WhatsApp - Coming Soon
-          </div>
-        );
+        return <NotificationManagement students={students} />;
       default:
         // Redirect to first allowed menu
         const allowedMenus = getAllowedMenus(user.role);
