@@ -2,6 +2,7 @@ import React from "react";
 import { Users, Check, Calendar, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { Student, Payment } from "../../types";
+import DatabaseStatus from "../database/DatabaseStatus";
 
 interface DashboardProps {
   students: Student[];
@@ -29,6 +30,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ students, payments }) => {
 
   return (
     <div className="space-y-6">
+      {/* Database Status - Only visible to admin/staff */}
+      {(user?.role === "admin" || user?.role === "staff") && <DatabaseStatus />}
+
       <div className="bg-white p-6 rounded-lg shadow">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">
           Selamat Datang, {user?.fullName}!

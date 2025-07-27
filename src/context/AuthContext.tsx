@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { AuthContextType, User } from "../types";
-import { mockAPI } from "../services/mockAPI";
+import { apiService } from "../services/apiService";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const initAuth = async () => {
       if (token) {
         try {
-          const response: any = await mockAPI.getProfile(token);
+          const response: any = await apiService.getProfile(token);
           setUser(response.user);
         } catch (error) {
           localStorage.removeItem("auth_token");
@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const login = async (credentials: { username: string; password: string }) => {
     try {
-      const response: any = await mockAPI.login(credentials);
+      const response: any = await apiService.login(credentials);
       setUser(response.user);
       setToken(response.token);
       localStorage.setItem("auth_token", response.token);
@@ -52,7 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const register = async (userData: any) => {
     try {
-      const response: any = await mockAPI.register(userData);
+      const response: any = await apiService.register(userData);
       setUser(response.user);
       setToken(response.token);
       localStorage.setItem("auth_token", response.token);

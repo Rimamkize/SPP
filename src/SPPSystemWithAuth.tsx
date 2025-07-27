@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginForm } from "./components/auth/LoginForm";
 import { Navigation } from "./components/navigation/Navigation";
@@ -8,16 +8,53 @@ import { PaymentManagement } from "./components/payments/PaymentManagement";
 import { Reports } from "./components/reports/Reports";
 import { UserRegistration } from "./components/registration";
 import { NotificationManagement } from "./components/notifications/NotificationManagement";
-import { mockStudents, mockPayments } from "./data/mockData";
+import { apiService } from "./services/apiService";
 import { hasMenuPermission, getAllowedMenus } from "./utils/accessControl";
+import { Student, Payment } from "./types";
 
 const SPPDashboard: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const [activeTab, setActiveTab] = useState("");
-  const [students, setStudents] = useState(mockStudents);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load data from API (PostgreSQL or Mock)
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isAuthenticated) return;
+      
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Load students and payments data
+        const [studentsResult, paymentsResult] = await Promise.all([
+          apiService.getStudents(),
+          apiService.getPayments()
+        ]);
+
+        if (studentsResult.success) {
+          setStudents(studentsResult.data);
+        }
+        
+        if (paymentsResult.success) {
+          setPayments(paymentsResult.data);
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setError('Failed to load data. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [isAuthenticated]);
 
   // Set default tab based on user role
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       const allowedMenus = getAllowedMenus(user.role);
       if (allowedMenus.length > 0) {
@@ -46,6 +83,38 @@ const SPPDashboard: React.FC = () => {
   }
 
   const renderContent = () => {
+    // Show loading state
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center min-h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading data...</p>
+            <p className="text-sm text-gray-500">Mode: {apiService.getCurrentMode()}</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Show error state
+    if (error) {
+      return (
+        <div className="flex items-center justify-center min-h-64">
+          <div className="text-center">
+            <div className="text-red-600 text-6xl mb-4">⚠️</div>
+            <h3 className="text-lg font-medium text-red-800">Error Loading Data</h3>
+            <p className="text-red-600 mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     // Check if user has permission for current tab
     if (!user || !hasMenuPermission(activeTab, user.role)) {
       return (
@@ -58,7 +127,7 @@ const SPPDashboard: React.FC = () => {
 
     switch (activeTab) {
       case "dashboard":
-        return <Dashboard students={students} payments={mockPayments} />;
+        return <Dashboard students={students} payments={payments} />;
       case "students":
         return (
           <StudentManagement
@@ -69,9 +138,9 @@ const SPPDashboard: React.FC = () => {
       case "register":
         return <UserRegistration />;
       case "payments":
-        return <PaymentManagement payments={mockPayments} />;
+        return <PaymentManagement payments={payments} />;
       case "reports":
-        return <Reports students={students} payments={mockPayments} />;
+        return <Reports students={students} payments={payments} />;
       case "notifications":
         return <NotificationManagement students={students} />;
       default:

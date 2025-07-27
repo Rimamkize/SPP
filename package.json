@@ -7,18 +7,29 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup-postgres": "node setup-postgres.js",
+    "migrate": "tsx src/utils/migration.ts",
+    "db:test": "tsx -e \"import Database from './src/services/database'; Database.testConnection().then(() => process.exit(0)).catch(() => process.exit(1));\""
   },
   "dependencies": {
     "@alloc/quick-lru": "^5.2.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.3.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^5.0.2",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.441.0",
+    "pg": "^8.11.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.5",
+    "@types/pg": "^8.10.9",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
@@ -30,6 +41,7 @@
     "eslint-plugin-react-refresh": "^0.4.5",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
+    "tsx": "^4.6.2",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
   }
